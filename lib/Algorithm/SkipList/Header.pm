@@ -4,13 +4,14 @@ use 5.006;
 use strict;
 use warnings::register __PACKAGE__;
 
+use base 'Algorithm::SkipList::Node';
+
 use Carp qw( carp );
 
-our $VERSION = '1.00';
+our $VERSION = '1.02';
 
 # $VERSION = eval $VERSION;
 
-our @ISA = qw( Algorithm::SkipList::Node );
 
 sub key_cmp {
   -1;
@@ -50,7 +51,7 @@ L<http://rt.cpan.org> to submit bug reports.
 
 =head1 LICENSE
 
-Copyright (c) 2003-2004 Robert Rothenberg. All rights reserved.  This
+Copyright (c) 2003-2005 Robert Rothenberg. All rights reserved.  This
 program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 

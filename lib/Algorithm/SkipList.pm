@@ -4,12 +4,11 @@ use 5.006;
 use strict;
 use warnings::register __PACKAGE__;
 
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 # $VERSION = eval $VERSION;
 
 use AutoLoader qw( AUTOLOAD );
 use Carp qw( carp croak );
-# no Carp::Assert qw(assert DEBUG);
 
 require Algorithm::SkipList::Node;
 require Algorithm::SkipList::Header;
@@ -31,10 +30,6 @@ require Exporter;
 
 our @EXPORT    = ( );
 our @EXPORT_OK = ( );
-
-# sub import {
-#   goto &Exporter::import;
-# }
 
 sub new {
   no integer;
@@ -82,32 +77,26 @@ sub new {
 
 sub _set_duplicates {
   my ($self, $dup) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   $self->{DUPLICATES} = $dup || 0;
 }
 
 sub _set_node_class {
   my ($self, $node_class) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   assert( UNIVERSAL::isa($node_class, BASE_NODE_CLASS) ), if DEBUG;
   $self->{NODECLASS} = $node_class;
 }
 
 sub _node_class {
     my ($self) = @_;
-#     assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
     $self->{NODECLASS};
   }
 
 sub reset {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   $self->{LASTKEY}  = undef;
 }
 
 sub clear {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   $self->{SIZE}     = 0;
   $self->{SIZE_THRESHOLD} = 2;
@@ -119,9 +108,6 @@ sub clear {
   CORE::delete $self->{LIST};
   $self->{LIST} = new Algorithm::SkipList::Header( undef, undef, $hdr );
 
-#   assert( $self->list->level > 0 ), if DEBUG;
-#   assert( UNIVERSAL::isa($self->{LIST}, BASE_NODE_CLASS) ), if DEBUG;
-
   $self->{LIST_END}  = undef;
   $self->{LASTINSRT} = undef;
 
@@ -130,8 +116,6 @@ sub clear {
 
 sub _set_max_level {
   my ($self, $level) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   assert( ($level>1) ), if DEBUG;
   if ($level > MAX_LEVEL) {
     croak "Cannot set max_level greater than ", MAX_LEVEL;
   } elsif ($level < MIN_LEVEL) {
@@ -144,7 +128,7 @@ sub _set_max_level {
 
 sub max_level {
   my ($self, $level) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
+
   if (defined $level) {
     $self->_set_max_level($level);
   } else {
@@ -176,13 +160,9 @@ sub _set_p {
 
   my ($self, $p) = @_;
 
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;  
-
   unless ( ($p>0) && ($p<1) ) {
     croak "Unvalid value for P (must be between 0 and 1)";
   }
-
-#   assert( ($p>0) && ($p<1) ), if DEBUG;
 
   $self->{P} = $p;
   $self->_build_distribution;
@@ -193,7 +173,6 @@ sub p {
   no integer;
 
   my ($self, $p) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   if (defined $p) {
     $self->_set_p($p);
@@ -205,8 +184,6 @@ sub p {
 sub _set_k {
   my ($self, $k) = @_;
 
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;  
-
   unless ( $k>=0 ) {
     croak "Unvalid value for K (must be at least 0)";
   }
@@ -217,7 +194,6 @@ sub _set_k {
 
 sub k {
   my ($self, $k) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   if (defined $k) {
     $self->_set_k($k);
@@ -228,13 +204,11 @@ sub k {
 
 sub size {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   $self->{SIZE};
 }
 
 sub list {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   $self->{LIST};
 }
 
@@ -243,7 +217,6 @@ sub _adjust_level_threshold {
   use integer;
 
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   if ($self->{SIZE} >= $self->{SIZE_THRESHOLD}) {
     $self->{LAST_SIZE_TH}    = $self->{SIZE_THRESHOLD};
@@ -253,8 +226,6 @@ sub _adjust_level_threshold {
     $self->{SIZE_THRESHOLD}  = $self->{LAST_SIZE_TH};
     $self->{LAST_SIZE_TH}    = $self->{LAST_SIZE_TH} / 2;
     $self->{SIZE_LEVEL}--, if ($self->{SIZE_LEVEL} > MIN_LEVEL);
-#     assert( $self->{LAST_SIZE_TH} == int($self->{LAST_SIZE_TH}) ), if DEBUG;
-#     assert( $self->{SIZE_LEVEL} >= 1 ), if DEBUG;
   }
 }
 
@@ -262,7 +233,6 @@ sub _new_node_level { # previously _random_level
   no integer;
 
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $n     = CORE::rand();
   my $level = 1;
@@ -272,7 +242,6 @@ sub _new_node_level { # previously _random_level
     $level++;
   }
 
-#   assert( ($level >= 1) && ($level <= $self->{SIZE_LEVEL}) ), if DEBUG;
   $level;
 }
 
@@ -281,19 +250,10 @@ sub _search_with_finger {
 
   use integer;
 
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   assert( (!defined $finger) || UNIVERSAL::isa($finger, 'ARRAY') ),
-#     if DEBUG;
-
   my $list   = $self->list;
   my $level  = $list->level-1;
 
-#   assert( UNIVERSAL::isa( $list, BASE_NODE_CLASS ) ), if DEBUG;
-#   assert( $level >= 0 ), if DEBUG;
-
   my $node   = $finger->[ $level ] || $list;
-
-#   assert( defined $node ), if DEBUG;
 
   # Iteresting Perl syntax quirk:
   #   do { my $x = ... } while ($x)
@@ -323,8 +283,6 @@ sub _search_with_finger {
   # delete and truncate have problems and need kluges to make up for
   # that.
 
-  #   assert( UNIVERSAL::isa($node, BASE_NODE_CLASS) ), if DEBUG;
-
   ($node, $finger, $cmp);
 }
 
@@ -333,21 +291,12 @@ sub _search {
 
   use integer;
 
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   assert( (!defined $finger) || UNIVERSAL::isa($finger, 'ARRAY') ),
-#     if DEBUG;
-
   my $list   = $self->list;
   my $level  = $list->level-1;
-
-#   assert( UNIVERSAL::isa( $list, BASE_NODE_CLASS ) ), if DEBUG;
-#   assert( $level >= 0 ), if DEBUG;
 
 #  $finger ||= [ ];
 
   my $node   = $finger->[ $level ]  || $list;
-
-#   assert( defined $node ), if DEBUG;
 
   # This version of the search algorithm is based on Schneier, 1994.
 
@@ -363,15 +312,11 @@ sub _search {
 
   $node = $fwd; # , unless ($cmp); # Devel::Cover says it's never false
 
-  #   assert( UNIVERSAL::isa($node, BASE_NODE_CLASS) ), if DEBUG;
-
   ($node, $finger, $cmp);
 }
 
 sub insert {
   my ($self, $key, $value, $finger) = @_;
-
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   use integer;
 
@@ -388,8 +333,6 @@ sub insert {
 	if ($node->key_cmp($key) <= 0);
       };
   }
-
-#   assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
 
   ($node, $finger, $cmp) = $self->_search_with_finger($key, $finger);
 
@@ -427,13 +370,6 @@ sub delete {
 
   use integer;
 
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   assert( defined $key ), if DEBUG;
-# 
-#   if (defined $finger) {
-#     assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
-#   }
-
   my $list = $self->list;
 
   my ($node, $update_ref, $cmp) = $self->_search_with_finger($key, $finger);
@@ -449,7 +385,6 @@ sub delete {
     }
 
     my $level = $node->level; 
-#     assert($level < @{$update_ref}), if DEBUG;
 
     for (my $i=0; $i<$level; $i++) {
       $update_ref->[$i]->header()->[$i] = $node->header()->[$i];
@@ -483,22 +418,12 @@ sub delete {
 sub exists {
 
   my ($self, $key, $finger) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-
-#   if (defined $finger) {
-#     assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
-#   }
 
   (($self->_search($key, $finger))[2] == 0);
 }
 
 sub find_with_finger {
   my ($self, $key, $finger) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-
-#   if (defined $finger) {
-#     assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
-#   }
 
   my ($x, $update_ref, $cmp) = $self->_search_with_finger($key, $finger);
 
@@ -510,20 +435,15 @@ sub find_with_finger {
 
 sub find {
   my ($self, $key, $finger) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-
-#   if (defined $finger) {
-#     assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
-#   }
 
   my ($node, $update_ref, $cmp) = $self->_search($key, $finger);
 
   ($cmp == 0) ? $node->value : undef;
 }
 
+
 sub _first_node { # actually this is the second node
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $list = $self->list;
   my $node = $list->header()->[0];
@@ -532,7 +452,6 @@ sub _first_node { # actually this is the second node
 
 sub last_key {
   my ($self, $node, $index) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   if (@_ > 1) {
     $self->{LASTKEY} = [ $node, $index ];
@@ -558,7 +477,6 @@ sub last_key {
 
 sub first_key {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $node = $self->_first_node;
 
@@ -573,11 +491,6 @@ sub first_key {
 
 sub next_key {
   my ($self, $last_key, $finger) = @_;
-
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-#   if ($finger) {
-#     assert( ref($finger) eq 'ARRAY' ), if DEBUG;
-#   }
 
   my ($node, $cmp, $value, $index);
 
@@ -631,11 +544,6 @@ __END__
 
 sub find_duplicates {
   my ($self, $key, $finger) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
-
-#   if (defined $finger) {
-#     assert( UNIVERSAL::isa($finger, 'ARRAY') ), if DEBUG;
-#   }
 
   my ($node, $update_ref, $cmp) = $self->_search_with_finger($key, $finger);
 
@@ -657,13 +565,11 @@ sub find_duplicates {
 
 sub level {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   return $self->list->level;
 }
 
 sub _greatest_node {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $list = $self->{LIST_END} || $self->list;
 
@@ -679,7 +585,6 @@ sub _greatest_node {
 
 sub least {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my ($node) = $self->_first_node;
 
@@ -693,7 +598,6 @@ sub least {
 
 sub greatest {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $node = $self->_greatest_node;
   if ($node) {
@@ -706,7 +610,6 @@ sub greatest {
 
 sub next {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my ($key, $finger, $value) = $self->next_key;
 
@@ -719,53 +622,56 @@ sub next {
 
 sub prev_key {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   croak "unimplemented method";
 }
 
 sub prev {
   my ($self) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
   croak "unimplemented method";
 }
 
+sub _search_nodes {
+  my ($self, $low, $finger_low, $high ) = @_;
+  my @nodes = ();
 
-sub keys {
-  my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
+  $low  = $self->_first_node()->key(),  unless (defined $low);
+  $high = $self->_greatest_node->key(), unless (defined $high);
 
-  my @keys = ();
-
-  my $key = $self->first_key;
-
-  while (defined $key) {
-    push @keys, $key;
-    $key = $self->next_key;
+  if ($self->_node_class->new($low)->key_cmp($high) > 0) {
+    carp "low > high";
+    return;
   }
 
+  my ($node, $finger, $cmp) = $self->_search($low, $finger_low);
+  if ($cmp) {
+    return;
+  } else {
+    while ((defined $node) && ($node->key_cmp($high) <= 0)) {
+      push @nodes, $node;
+      $node = $node->header()->[0];
+    }
+  }
+  return @nodes;
+}
+
+sub keys {
+  my ($self, $low, $finger_low, $high) = @_;
+
+  my @keys = map { $_->key }
+    $self->_search_nodes($low, $finger_low, $high);
   return @keys;
 }
 
 sub values {
-  my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
+  my ($self, $low, $finger_low, $high) = @_;
 
-  my $key = $self->first_key;
-
-  my @values = ();
-
-  while (defined $key) {
-    my $value = ($self->last_key)[2];
-    push @values, $value;
-    $key = $self->next_key;
-  }
-
+  my @values = map { $_->value }
+    $self->_search_nodes($low, $finger_low, $high);
   return @values;
 }
 
 sub truncate {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my ($key, $finger) = @_;
 
@@ -853,7 +759,6 @@ sub truncate {
 
 sub copy {
   my $self = shift;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my ($key, $finger_or, $key_to) = @_;
 
@@ -864,24 +769,12 @@ sub copy {
   );
   $list->{DUPLICATES} = $self->{DUPLICATES};
 
-  my ($node, $cmp);
-  my $finger_cp = undef;
+  my @nodes = $self->_search_nodes($key, $finger_or, $key_to);
+  return, unless (@nodes);
 
-  if (defined $key) {
-    ($node, $finger_or, $cmp) = $self->_search_with_finger( $key, $finger_or );
-    if ($cmp != 0) {
-      return;
-    }
-  }
-  else {
-    $node      = $self->_first_node;
-    $finger_or = undef;
-  }
-
-  while ((defined $node) && 
-	 ((!defined $key_to) || ($node->key_cmp($key_to) <= 0))) {
-    my $finger_cp = $list->insert($node->key, $node->value, $finger_cp);
-    $node = $node->header()->[0];
+  my $finger_cp;
+  foreach my $node (@nodes) {
+    $finger_cp = $list->insert($node->key, $node->value, $finger_cp);
   }
 
   return $list;
@@ -890,17 +783,12 @@ sub copy {
 sub merge {
 
   my $list1 = shift;
-#   assert( UNIVERSAL::isa($list1, __PACKAGE__) ), if DEBUG;
 
   my $list2 = shift;
-#   assert( UNIVERSAL::isa($list2, __PACKAGE__) ), if DEBUG;
 
   my ($finger1, $finger2);
   my ($node1) = $list1->_first_node;
   my ($node2) = $list2->_first_node;
-
-#   assert( ref($node1) eq ref($node2) ), if DEBUG;
-#   assert( ref($finger1) eq 'ARRAY' ), if DEBUG;
 
   while ($node1 || $node2) {
 
@@ -934,19 +822,15 @@ sub merge {
 
 sub append {
   my $list1 = shift;
-#   assert( UNIVERSAL::isa($list1, __PACKAGE__) ), if DEBUG;
 
   my $list2 = shift;
 
   unless (defined $list2) { return; }
-#   assert( UNIVERSAL::isa($list2, __PACKAGE__) ), if DEBUG;
 
   my $node = $list1->_greatest_node;
   if ($node) {
 
     my ($next) = $list2->_first_node;
-
-#    assert( $node->key_cmp( $next->key ) < 0 ), if DEBUG;
 
     if ($list1->list->level > $list2->list->level) {
 
@@ -986,7 +870,6 @@ sub append {
 
 sub _node_by_index {
   my ($self, $index) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   # Bug: for some reason, change $[ does not affect this module.
 
@@ -1030,7 +913,6 @@ sub _node_by_index {
 
 sub key_by_index {
   my ($self, $index) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $node = $self->_node_by_index($index);
   if ($node) {
@@ -1042,7 +924,6 @@ sub key_by_index {
 
 sub value_by_index {
   my ($self, $index) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $node = $self->_node_by_index($index);
   if ($node) {
@@ -1054,7 +935,6 @@ sub value_by_index {
 
 sub index_by_key {
   my ($self, $key) = @_;
-#   assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $node  = $self->_first_node;
   my $index = 0;
@@ -1075,7 +955,6 @@ sub index_by_key {
 sub _debug {
 
   my $self = shift;
-#  assert( UNIVERSAL::isa($self, __PACKAGE__) ), if DEBUG;
 
   my $list   = $self->list;
 
@@ -1104,9 +983,6 @@ Algorithm::SkipList - Perl implementation of skip lists
 The following non-standard modules are used:
 
   enum
-
-Carp::Assert is no longer required.  However, the assertions can be
-uncommented for debugging.
 
 =head1 SYNOPSIS
 
@@ -1483,6 +1359,11 @@ This is an autoloading method.
 
 Returns a list of keys (in sorted order).
 
+  @keys = $list->keys( $low, $high);
+
+Returns a list of keys between C<$low> and C<$high>, inclusive. (This
+is only available in versions 1.02 and later.)
+
 This is an autoloading method.
 
 =item values
@@ -1841,7 +1722,7 @@ L<http://rt.cpan.org> to submit bug reports.
 
 =head1 LICENSE
 
-Copyright (c) 2003-2004 Robert Rothenberg. All rights reserved.  This
+Copyright (c) 2003-2005 Robert Rothenberg. All rights reserved.  This
 program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
 

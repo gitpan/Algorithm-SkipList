@@ -1,6 +1,18 @@
 Revision history for Perl extension Algorithm::SkipList. (Changes which may
 not be backwards compatible are marked with an asterisk '*'.)
 
+1.02	Wed Jan  4 2005
+	* removed validate_key and validate_value methods from node types
+	- removed commented-out assertions
+	- added _search_nodes method
+	- keys and values methods rewritten, and can retrieve keys or
+	  values between key ranges ranges 
+	- copy method rewritten
+	- corrected typo in error message
+	- added missing test to MANIFEST
+	- added additional tests
+	- added SIGNATURE to distribution
+
 1.01	Fri Sep  3 2004
 	- minor correction to distribution
 

@@ -10,7 +10,6 @@ my $build = Module::Build->new
        'perl'                       => '5.6.1',
      },
      recommends => {
-       'Carp::Assert'               => 0.17,
      },
      build_requires => {
        'Test::More'                 => 0,
@@ -19,6 +18,7 @@ my $build = Module::Build->new
      autosplit => 'lib/Algorithm/SkipList.pm',
      create_makefile_pl => 'traditional',
      dist_author        => 'Robert Rothenberg <rrwo at cpan.org>',
+     sign               => 1,
 );
 
 $build->create_build_script;

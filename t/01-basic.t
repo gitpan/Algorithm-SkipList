@@ -6,11 +6,6 @@ require Algorithm::SkipList::Node;
 
 our @ISA = qw( Algorithm::SkipList::Node );
 
-sub validate_key {
-  my ($self, $key) = @_;
-  return ($key =~ /^\-?\d+$/);
-}
-
 sub key_cmp {
   my ($self, $right) = @_;
   my $left  = $self->key;
@@ -22,7 +17,7 @@ sub key_cmp {
 
 package main;
 
-use Test::More tests => 82;
+use Test::More tests => 73;
 
 use_ok("Algorithm::SkipList");
 
@@ -31,15 +26,15 @@ for my $i (-1..1) {
   ok($n->isa("IntegerNode"));
   ok($n->isa("Algorithm::SkipList::Node"));
 
-  ok($n->validate_key($i));
   ok($n->key == $i);
   ok($n->key_cmp($i) == 0,    "key_cmp(i)");
   ok($n->key_cmp($i+1) == -1, "key_cmp(i+1)");
   ok($n->key_cmp($i-1) == 1,  "key_cmp(i-1)");
 
+  ok(IntegerNode->new($i)->key_cmp($i) == 0, "Node->new(i)->key_cmp(i)");
+
   ok($n->key($i+1) != $i+1,   "read-only key");
 
-  ok($n->validate_value(10-$i));
   ok($n->value == 10-$i);
   ok($i == $n->value($i));
   ok($n->value == $i);
@@ -65,7 +60,7 @@ sub succ {
 sub pred {
   my $char  = shift;
   unless (length($char)==1) {
-    die "only a signle character is acceptable";
+    die "only a single character is acceptable";
   }
   my $count = shift;
   unless (defined $count) {
@@ -80,7 +75,6 @@ for my $i ('A'..'C') {
   $n = new Algorithm::SkipList::Node($i, ++$c);
   ok($n->isa("Algorithm::SkipList::Node"));
 
-  ok($n->validate_key($i));
   ok($n->key eq $i);
   ok($n->key_cmp($i) == 0,    "key_cmp(i)");
   ok($n->key_cmp(succ($i)) == -1, "key_cmp(i+1)");
@@ -88,7 +82,6 @@ for my $i ('A'..'C') {
 
   ok($n->key(succ($i)) ne succ($i),   "read-only key");
 
-  ok($n->validate_value($c));
   ok($n->value == $c);
   ok($i eq $n->value($i));
   ok($n->value eq $i);

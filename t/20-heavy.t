@@ -15,13 +15,13 @@ use warnings;
 
 use constant SIZE => 20;
 
-use Test::More tests => 6+(73*SIZE);
+use Test::More tests => 6+(53*SIZE);
 
 use Test::Warn;
 
 use_ok("Algorithm::SkipList");
 
-ok($Algorithm::SkipList::VERSION >= 0.73);
+ok($Algorithm::SkipList::VERSION >= 1.02);
 
 my @Keys = ();
 my $Cnt  = SIZE;
@@ -51,10 +51,8 @@ foreach (1..SIZE) {
   do {
     $k = random_stuff();
   } while (exists $Bogus{ $k });
-  ok( Algorithm::SkipList::Node->validate_key($k) );
 
   my $v = random_stuff();
-  ok( Algorithm::SkipList::Node->validate_value($v) );
 
   $Hash{ $k } = $v;
 
@@ -62,13 +60,12 @@ foreach (1..SIZE) {
   do {
     $a = random_stuff();
   } while ($a eq $v);
-  ok( Algorithm::SkipList::Node->validate_value($a) );
 
   my $x;
   do {
     $x = random_stuff();
   } while (exists $Hash{ $v });
-  ok( Algorithm::SkipList::Node->validate_key($x) );
+
   $Bogus{ $x } = $a;
 
   ok( $List->list->key_cmp($k) == -1 );
@@ -118,21 +115,13 @@ foreach (1..SIZE) {
     ok( $cmp == 0 );
     ok( $node->key_cmp($k) == 0 );
     ok( $node->key eq $k );
-    ok( $node->validate_key($k) );
-    ok( $node->validate_key($node->key) );
     ok( $node->value eq $v );
-    ok( $node->validate_value($v) );
-    ok( $node->validate_value( $node->value ) );
 
     ($node, $finger, $cmp) = $List->_search_with_finger($k, $finger);
     ok( $cmp == 0 );
     ok( $node->key_cmp($k) == 0 );
     ok( $node->key eq $k );
-    ok( $node->validate_key($k) );
-    ok( $node->validate_key($node->key) );
     ok( $node->value eq $v );
-    ok( $node->validate_value($v) );
-    ok( $node->validate_value( $node->value ) );
   }
 
   {
@@ -140,21 +129,13 @@ foreach (1..SIZE) {
     ok( $cmp == 0 );
     ok( $node->key_cmp($k) == 0 );
     ok( $node->key eq $k );
-    ok( $node->validate_key($k) );
-    ok( $node->validate_key($node->key) );
     ok( $node->value eq $v );
-    ok( $node->validate_value($v) );
-    ok( $node->validate_value( $node->value ) );
 
     ($node, $finger, $cmp) = $List->_search($k, $finger);
     ok( $cmp == 0 );
     ok( $node->key_cmp($k) == 0 );
     ok( $node->key eq $k );
-    ok( $node->validate_key($k) );
-    ok( $node->validate_key($node->key) );
     ok( $node->value eq $v );
-    ok( $node->validate_value($v) );
-    ok( $node->validate_value( $node->value ) );
   }
 
   my @results = $List->find( $k, $finger );

@@ -19,4 +19,7 @@ t/06-duplicates.t
 t/07-max_level.t
 t/08-p.t
 t/09-index.t
+t/10-deprecated.t
+t/11-keys.t
 t/20-heavy.t
+SIGNATURE    Added here by Module::Build

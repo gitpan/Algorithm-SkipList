@@ -8,9 +8,6 @@ REQUIREMENTS
 
       enum
 
-    Carp::Assert is no longer required.  However, the assertions can
-    be uncommented for debugging.
-
 Installation
     Installation can be done using the traditional Makefile.PL or the
     newer Build.PL methods.
@@ -79,27 +76,19 @@ DESCRIPTION
         <http://en.wikipedia.org/wiki/Skip_list>
 
 REVISION HISTORY
-    Changes since v0.73:
+    Changes since v1.01:
 
-    1.01  Fri Sep  3 2004
-	- minor correction to distribution
-
-    1.00  Fri Sep  3 2004
-	- renamed distribution to Algorithm-SkipList
-	- updated version numbers
-	- added deprecation note to List::SkipList abstract
-	- renamed module to Algorithm::SkipList from List::SkipList
-	- Node and Header types are now in separate files
-	- List::SkipList is included, but gives deprecation warnings
-	- header node gives warnings when calling key or value methods
-	- heavy test has less tests for standard dist
-	- renamed test files
-	- minor code changes
-	- corrected typos in POD
-	- removed benchmarking code from etc/
-	- redid version numbering of Node and Header classes, since they
-	  were ignored by PAUSE/CPAN indexers anyway
-	- added PurePerl dummy class
+    1.02 Wed Jan  4 2005
+	* removed validate_key and validate_value methods from node types
+	- removed commented-out assertions
+	- added _search_nodes method
+	- keys and values methods rewritten, and can retrieve keys or
+	  values between key ranges ranges 
+	- copy method rewritten
+	- corrected typo in error message
+	- added missing test to MANIFEST
+	- added additional tests
+	- added SIGNATURE to distribution
 
     A detailed revision history is in the Changes file included with
     this distribution.
@@ -121,7 +110,7 @@ AUTHOR
     Robert Rothenberg <rrwo at cpan.org>
 
 LICENSE
-    Copyright (c) 2003-2004 Robert Rothenberg. All rights reserved. This
+    Copyright (c) 2003-2005 Robert Rothenberg. All rights reserved. This
     program is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.
 
