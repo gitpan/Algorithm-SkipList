@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Algorithm-SkipList
-version: 1.00
+version: 1.01
 author:
   - Robert Rothenberg <rrwo at cpan.org>
 abstract: Perl implementation of skip lists
@@ -17,7 +17,7 @@ build_requires:
 provides:
   Algorithm::SkipList:
     file: lib/Algorithm/SkipList.pm
-    version: 1.00
+    version: 1.01
   Algorithm::SkipList::Header:
     file: lib/Algorithm/SkipList/Header.pm
     version: 1.00

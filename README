@@ -81,6 +81,25 @@ DESCRIPTION
 REVISION HISTORY
     Changes since v0.73:
 
+    1.01  Fri Sep  3 2004
+	- minor correction to distribution
+
+    1.00  Fri Sep  3 2004
+	- renamed distribution to Algorithm-SkipList
+	- updated version numbers
+	- added deprecation note to List::SkipList abstract
+	- renamed module to Algorithm::SkipList from List::SkipList
+	- Node and Header types are now in separate files
+	- List::SkipList is included, but gives deprecation warnings
+	- header node gives warnings when calling key or value methods
+	- heavy test has less tests for standard dist
+	- renamed test files
+	- minor code changes
+	- corrected typos in POD
+	- removed benchmarking code from etc/
+	- redid version numbering of Node and Header classes, since they
+	  were ignored by PAUSE/CPAN indexers anyway
+	- added PurePerl dummy class
 
     A detailed revision history is in the Changes file included with
     this distribution.

@@ -1,6 +1,9 @@
 Revision history for Perl extension Algorithm::SkipList. (Changes which may
 not be backwards compatible are marked with an asterisk '*'.)
 
+1.01	Fri Sep  3 2004
+	- minor correction to distribution
+
 1.00    Fri Sep  3 2004
 	- renamed distribution to Algorithm-SkipList
 	- updated version numbers
