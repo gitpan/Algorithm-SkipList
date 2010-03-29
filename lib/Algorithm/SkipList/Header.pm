@@ -2,29 +2,28 @@ package Algorithm::SkipList::Header;
 
 use 5.006;
 use strict;
-use warnings::register __PACKAGE__;
 
-use base 'Algorithm::SkipList::Node';
+use base 'Tree::Node';
 
-use Carp qw( carp );
+use Carp qw( croak );
 
-our $VERSION = '1.02';
-
-# $VERSION = eval $VERSION;
+our $VERSION = '2.00_02';
+$VERSION = eval $VERSION;
 
 
 sub key_cmp {
-  -1;
+  return -1;
 }
 
-sub key {
-  carp "this method should never be run", if (warnings::enabled);
+sub _error {
+  croak "this method should never be run";
   return;
 }
 
-sub value {
-  carp "this method should never be run", if (warnings::enabled);
-  return;
+BEGIN {
+  foreach my $method (
+   qw( key set_key value set_value  ))
+    { no strict 'refs'; *$method = \&_error; }
 }
 
 1;
@@ -51,9 +50,9 @@ L<http://rt.cpan.org> to submit bug reports.
 
 =head1 LICENSE
 
-Copyright (c) 2003-2005 Robert Rothenberg. All rights reserved.  This
-program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+Copyright (c) 2003-2005, 2008-2010 Robert Rothenberg. All rights
+reserved.  This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 

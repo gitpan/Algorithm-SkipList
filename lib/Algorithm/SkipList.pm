@@ -1,73 +1,209 @@
+=head1 NAME
+
+Algorithm::SkipList - Perl implementation of skip lists
+
+=begin readme
+
+=head1 REQUIREMENTS
+
+The following non-core modules are used:
+
+  Tree::Node
+
+=head1 INSTALLATION
+
+Installation can be done using the traditional F<Makefile.PL> or the
+newer F<Build.PL> method .
+
+Using Makefile.PL:
+
+  perl Makefile.PL
+  make test
+  make install
+
+(On Windows platforms you should use F<nmake> instead.)
+
+Using Build.PL (if you have L<Moddule::Build> installed):
+
+  perl Build.PL
+  perl Build test
+  perl Build install    
+
+=end readme
+
+=head1 SYNOPSIS
+
+  my $list = new Algorithm::SkipList();
+
+  $list->insert( 'key1', 'value' );
+  $list->insert( 'key2', 'another value' );
+
+  $value = $list->find('key2');
+
+  $list->delete('key1');
+
+=head1 DESCRIPTION
+
+This is an implementation of skip lists in Perl.
+
+Skip lists are an alternative to balanced trees. They are ordered
+linked lists with random links at various I<levels> that allow
+searches to skip over sections of the list, like so:
+
+  4 +---------------------------> +----------------------> +
+    |                             |                        |
+  3 +------------> +------------> +-------> +-------> +--> +
+    |              |              |         |         |    |
+  2 +-------> +--> +-------> +--> +--> +--> +-------> +--> +
+    |         |    |         |    |    |    |         |    |
+  1 +--> +--> +--> +--> +--> +--> +--> +--> +--> +--> +--> +
+         A    B    C    D    E    F    G    H    I    J   NIL
+
+A search would start at the top level: if the link to the right
+exceeds the target key, then it descends a level.
+
+Skip lists generally perform as well as balanced trees for searching
+but do not have the overhead with respect to reblanacing the structure.
+And on average, they use less memory than trees.
+
+They also use less memory than hashes, and so are appropriate for
+large collections.
+
+=for readme stop
+
+For more information on skip lists, see the L</"SEE ALSO"> section below.
+
+=head2 METHODS
+
+=cut
+
 package Algorithm::SkipList;
 
 use 5.006;
 use strict;
 use warnings::register __PACKAGE__;
 
-our $VERSION = '1.02';
-# $VERSION = eval $VERSION;
+our $VERSION = '2.00_02';
+$VERSION = eval $VERSION;
 
-use AutoLoader qw( AUTOLOAD );
+use self;
+
 use Carp qw( carp croak );
+use Tree::Node;
+use Algorithm::SkipList::Header;
 
-require Algorithm::SkipList::Node;
-require Algorithm::SkipList::Header;
+use constant MAX_LEVEL       => 31;
+use constant MIN_LEVEL       =>  1;
 
-# Future versions should check Config module to determine if it is
-# being run on a 64-bit processor, and set MAX_LEVEL to 64.
+use constant DEFAULT_P       => 0.25;
+use constant DEFAULT_K       => 0;
 
-use constant MIN_LEVEL       =>  2;
-use constant MAX_LEVEL       => 32;
-use constant DEF_P           => 0.25;
-use constant DEF_K           => 0;
+# We could use Algorithm::SkipList::Node, which exists as a stub. But
+# there's just no point to it.
 
-use constant BASE_NODE_CLASS => 'Algorithm::SkipList::Node';
+use constant DEFAULT_NODE_CLASS => 'Tree::Node';
 
-# We use Exporter instead of something like Exporter::Lite because
-# Carp uses it.
+# This is an internal routine which defines valid configuration options and
+# their default values.  It is meant to be called by the BEGIN block (see
+# source code below) that creates access methods for these options.
 
-require Exporter;
+my %CONFIG_OPTIONS;
 
-our @EXPORT    = ( );
-our @EXPORT_OK = ( );
+sub _set_config_options {
+  %CONFIG_OPTIONS = (
+    p                => DEFAULT_P,
+    k                => DEFAULT_K,
+    min_level        => MIN_LEVEL,
+    max_level        => MAX_LEVEL,
+    node_class       => DEFAULT_NODE_CLASS,
+    allow_duplicates => 0,
+  );
+}
+
+=over
+
+=item new
+
+  $list = new Algorithm::SkipList();
+
+Creates a new skip list.
+
+If you need to use a different L<node class|/"Node Methods"> for using
+customized L<comparison|/"key_cmp"> routines, you will need to specify a
+different class:
+
+  $list = new Algorithm::SkipList( node_class => 'MyNodeClass' );
+
+See the L</"Customizing the Node Class"> section below.
+
+Specialized internal parameters may be configured:
+
+  $list = new Algorithm::SkipList( max_level => 31 );
+
+Defines a different maximum list level (the default is 31).
+
+The initial list (see the L</"list"> method) will start out at one
+level, and will increase as the size of the list doubles, up intil
+it reaches the maximum level.
+
+The default minimum level can be changed:
+
+  $list = new Algorithm::SkipList( min_level => 4 );
+
+You can also control the probability used to determine level sizes for
+each node by setting the L<P|/"p"> and k values:
+
+  $list = new Algorithm::SkipList( p => 0.25, k => 1 );
+
+See  L</p> for more information on this parameter.
+
+You can enable duplicate keys by using the following:
+
+  $list = new Algorithm::SkipList( allow_duplicates => 1 );
+
+This is an experimental feature. See the L</KNOWN ISSUES> section
+below.
+
+=cut
 
 sub new {
-  no integer;
-
-  my $class = shift;
-
-  my $self = {
-    NODECLASS => BASE_NODE_CLASS,       # node class used by list
-    LIST      => undef,                 # pointer to the header node
-    SIZE      => undef,                 # size of list
-    SIZE_THRESHOLD => undef,            # size at which SIZE_LEVEL increased
-    LAST_SIZE_TH   => undef,            # previous SIZE_THRESHOLD
-    SIZE_LEVEL     => undef,            # maximum level random_level
-    MAXLEVEL  => MAX_LEVEL,             # absolute maximum level
-    P         => 0,                     # probability for each level
-    K         => 0,                     # minimum power of P
-    P_LEVELS  => [ ],                   # array used by random_level
-    LIST_END  => undef,                 # node with greatest key
-    LASTKEY   => undef,                 # last key used by next_key
-    LASTINSRT => undef,                 # cached insertion fingers
-    DUPLICATES => 0,                    # allow duplicates?
+  my $class = shift || __PACKAGE__;
+  my $self  = {
+    p                => DEFAULT_P,
+    k                => DEFAULT_K,
+    p_levels         => [ ],            # array used by random_level
   };
 
   bless $self, $class;
 
-  $self->_set_p( DEF_P ); # initializes P_LEVELS
-  $self->_set_k( DEF_K );
+  # Set default values
+
+  foreach my $field (CORE::keys %CONFIG_OPTIONS) {
+    my $method = "_set_" . $field;
+    $self->$method( $CONFIG_OPTIONS{$field} );
+  }
+
+  # Update user-settings
 
   if (@_) {
-    my %args = @_;
-    foreach my $arg_name (CORE::keys %args) {
-      my $method = "_set_" . $arg_name;
-      if ($self->can($method)) {
-	$self->$method( $args{ $arg_name } );
-      } else {
-	croak "Invalid parameter name: ``$arg_name\'\'";
+    while (my $arg = shift) {
+      if (exists $CONFIG_OPTIONS{$arg}) {
+	my $value = shift;
+	my $method = "_set_" . $arg;
+	$self->$method($value);
+      }
+      else {
+
+	croak "Unknown option: \'$arg\'";
       }
     }
+  }
+
+  # Additional user-settings checks, since the practical way to check is
+  # after all of the settings have been changed.
+
+  if ($self->min_level > $self->max_level) {
+    croak "min_level > max_level";
   }
 
   $self->clear;
@@ -75,472 +211,909 @@ sub new {
   return $self;
 }
 
-sub _set_duplicates {
-  my ($self, $dup) = @_;
-  $self->{DUPLICATES} = $dup || 0;
+=item list
+
+  $node = $list->list;
+
+Returns the initial node in the list.  Accessing accessors other than
+C<set_child> and C<get_child> will trigger an error.
+
+This method is meant for internal use.
+
+=cut
+
+sub list {
+  return $self->{list};
 }
 
-sub _set_node_class {
-  my ($self, $node_class) = @_;
-  $self->{NODECLASS} = $node_class;
+=item level
+
+  $level = $list->level;
+
+Returns the current maximum level (number of forward pointers) that
+any node can have.  It will not be larger than L</max_level>, nor
+does it correspond to the number of nodes in L</list>.
+
+This method is meant for internal use.
+
+=cut
+
+sub level {
+  return $self->{level};
 }
 
-sub _node_class {
-    my ($self) = @_;
-    $self->{NODECLASS};
-  }
+=item clear
 
-sub reset {
-  my ($self) = @_;
-  $self->{LASTKEY}  = undef;
-}
+  $list->clear;
+
+Erases existing nodes and resets the list.
+
+=cut
 
 sub clear {
-  my ($self) = @_;
+  $self->{list}      = Algorithm::SkipList::Header->new(MAX_LEVEL);
+  $self->{level}     = MIN_LEVEL;
 
-  $self->{SIZE}     = 0;
-  $self->{SIZE_THRESHOLD} = 2;
-  $self->{LAST_SIZE_TH}   = 0;
-  $self->{SIZE_LEVEL}     = MIN_LEVEL;
-
-  my $hdr = [ (undef) x $self->{SIZE_LEVEL} ];
-
-  CORE::delete $self->{LIST};
-  $self->{LIST} = new Algorithm::SkipList::Header( undef, undef, $hdr );
-
-  $self->{LIST_END}  = undef;
-  $self->{LASTINSRT} = undef;
-
-  $self->reset;
-}
-
-sub _set_max_level {
-  my ($self, $level) = @_;
-  if ($level > MAX_LEVEL) {
-    croak "Cannot set max_level greater than ", MAX_LEVEL;
-  } elsif ($level < MIN_LEVEL) {
-    croak "Cannot set max_level less than ", MIN_LEVEL;
-  } elsif ((defined $self->list) && ($level < $self->list->level)) {
-    croak "Current level exceeds specified level";
+  if ($self->{max_level} > $self->{list}->child_count) {
+    $self->{max_level} = $self->{list}->child_count;
+    carp sprintf('max_level downgraded to %d due to limits of list header',
+		 $self->{list}->child_count) if (warnings::enabled);
   }
-  $self->{MAXLEVEL} = $level;
+
+  $self->{size}      = 0;
+
+  $self->{size_threshold}      = 2**($self->{level});
+  $self->{last_size_threshold} = $self->{size};
+
+  $self->{last_node} = undef;
+
+  $self->_reset_iterator;
 }
 
-sub max_level {
-  my ($self, $level) = @_;
+=begin internal
 
-  if (defined $level) {
-    $self->_set_max_level($level);
+=item _search
+
+  ($node, $cmp) = $list->_search( $key );
+
+  ($node, $cmp) = $list->_search( $key, $finger );
+
+Same as L</_search_with_finger>, only that no search finger is returned.
+
+This is useful for searches where a finger is not needed.  The speed
+of searching is improved.
+
+Note that as of version 2.00, the order of return values has been
+changed.
+
+=end internal
+
+=cut
+
+sub _search {
+  my ($key, $finger) = @args;
+
+  use integer;
+
+  my $list   = $self->list;
+  my $level  = $self->level-1;
+
+  my $node   = $finger->[ $level ] || $list;
+
+  my $fwd;
+  my $cmp = -1;
+
+  do {
+    while ( ($fwd = $node->get_child($level)) &&
+	    ($cmp = $fwd->key_cmp($key)) < 0) {
+      $node = $fwd;
+    }
+  } while ((--$level>=0) && $cmp);
+
+ $node = $fwd, unless ($cmp);
+
+  return ($node, $cmp);
+}
+
+=begin internal
+
+=item _search_with_finger
+
+  ($node, $cmp, $finger) = $list->_search_with_finger( $key );
+
+Searches for the node with a key.  If the key is found, that node is
+returned along with a L</"header">.  If the key is not found, the previous
+node from where the node would be if it existed is returned.
+
+Note that the value of C<$cmp>
+
+  $cmp = $node->key_cmp( $key )
+
+is returned because it is already determined by L</_search>.
+
+Search fingers may also be specified:
+
+  ($node, $cmp, $finger) = $list->_search_with_finger( $key, $finger );
+
+See the section L</"About Search Fingers"> below.
+
+Note that as of version 2.00, the order of return values has been
+changed.
+
+=end internal
+
+=cut
+
+sub _search_with_finger {
+  my ($key, $finger) = @args;
+
+  use integer;
+
+  my $list   = $self->list;
+  my $level  = $self->level-1;
+
+  my $node   = $finger->[ $level ] || $list;
+
+  my $fwd;
+  my $cmp = -1;
+
+  do {
+    while ( ($fwd = $node->get_child($level)) &&
+	    ($cmp = $fwd->key_cmp($key)) < 0) {
+      $node = $fwd;
+    }
+    $finger->[$level] = $node;
+  } while (--$level>=0);
+
+  # Ideally we could stop when $cmp == 0, but the update vector would
+  # not be complete for levels below $level.
+
+  $node = $fwd, unless ($cmp);
+
+  return ($node, $cmp, $finger);
+}
+
+=item exists
+
+  if ($list->exists( $key )) { ... }
+
+Returns true if there exists a node associated with the key, false
+otherwise.
+
+This may also be used with  L<search fingers|/"About Search Fingers">:
+
+  if ($list->exists( $key, $finger )) { ... }
+
+=cut
+
+sub exists {
+  # my ($key, $finger) = @args;
+  (($self->_search(@args))[1] == 0);
+}
+
+=item find_with_finger
+
+  $value = $list->find_with_finger( $key );
+
+Searches for the node associated with the key, and returns the value. If
+the key cannot be found, returns C<undef>.
+
+L<Search fingers|/"About Search Fingers"> may also be used:
+
+  $value = $list->find_with_finger( $key, $finger );
+
+To obtain the search finger for a key, call L</find_with_finger> in a
+list context:
+
+  ($value, $finger) = $list->find_with_finger( $key );
+
+=cut
+
+sub find_with_finger {
+  ##my ($key, $finger) = @args;
+  my ($node, $cmp);
+     ($node, $cmp, $args[1]) = $self->_search_with_finger(@args);
+
+  if ($cmp) {
+    return;
   } else {
-    $self->{MAXLEVEL};
+    return (wantarray) ? ($node->value, $args[1]) : $node->value;
   }
 }
 
-# We use the formula from Pugh's "Skip List Cookbook" paper.  We
-# generate a reverse-sorted array of values based on p and k.  In
-# _new_node_level() we look for the highest value in the array that is
-# less than a random number n (0<n<1).
+=item find
+
+  $value = $list->find( $key );
+
+  $value = $list->find( $key, $finger );
+
+Searches for the node associated with the key, and returns the value. If
+the key cannot be found, returns C<undef>.
+
+This method is slightly faster than L</find_with_finger> since it does
+not return a search finger when called in list context.
+
+If you are searching for duplicate keys, you must use
+L</find_with_finger> or L</find_duplicates>.
+
+=cut
+
+sub find {
+  ## my ($key, $finger) = @args;
+  my ($node, $cmp) = $self->_search(@args);
+
+  if ($cmp) {
+    return;
+  } else {
+    return $node->value;
+  }
+}
+
+=item insert
+
+  $list->insert( $key, $value );
+
+Inserts a new node into the list.
+
+Only alphanumeric keys are supported "out of the box".  To use numeric
+or other types of keys, see L</"Customizing the Node Class"> below.
+
+You may also use a L<search finger|/"About Search Fingers"> with insert,
+provided that the finger is for a key that occurs earlier in the list:
+
+  $list->insert( $key, $value, $finger );
+
+Using fingers for inserts is I<not> recommended since there is a risk
+of producing corrupted lists.
+
+=cut
+
+sub insert {
+  my ($key, $value, $finger) = @args;
+
+  use integer;
+
+  # TODO: Track last node inserted and use it's update vector if the
+  # key to be inserted is greater.
+
+  my ($node, $cmp);
+ ($node, $cmp, $finger) = $self->_search_with_finger($key, $finger);
+
+  if ($cmp || $self->{allow_duplicates}) {
+
+    my $level = $self->_new_node_level;
+    $node = $self->node_class->new($level);
+    $node->set_key($key);
+    $node->set_value($value);
+
+    my $list = $self->list;
+    for(my $i=0; $i<$level; $i++) {
+      $node->set_child($i, ($finger->[$i]||$list)->get_child($i));
+      ($finger->[$i]||$list)->set_child($i, $node);
+    }
+
+    $self->{size}++;
+    $self->_adjust_level_threshold;
+
+    # Tracking the last node in the list. We cannot save the finger
+    # since something could be inserted between $finger->[0] and the
+    # last_node.
+
+    $self->{last_node} = $node
+      unless ($node->get_child(0));
+
+  }
+  else {
+    $node->set_value($value);
+  }
+}
+
+=item delete
+
+  $value = $list->delete( $key );
+
+Deletes the node associated with the key, and returns the value.  If
+the key cannot be found, returns C<undef>.
+
+L<Search fingers|/"About Search Fingers"> may also be used:
+
+  $value = $list->delete( $key, $finger );
+
+Calling L</delete> in a list context I<will not> return a search
+finger.
+
+=cut
+
+sub delete {
+  my ($key, $finger) = @args;
+
+  use integer;
+
+  my ($node, $cmp);
+ ($node, $cmp, $finger) = $self->_search_with_finger(@args);
+
+  if ($cmp) {
+    return;
+  }
+  else {
+    my $list = $self->list;
+    for(my $i=0; $i<$node->child_count; $i++) {
+      ($finger->[$i]||$list)->set_child($i, $node->get_child($i));
+    }
+    $self->{size}--;
+
+    # It is only practical to adjust the level during inserts. If we
+    # do this during deletes, we run into some problems.
+
+    # $self->_adjust_level_threshold;
+
+    $self->{last_node} = $finger->[0]
+      unless ($node->get_child(0));
+
+    return $node->value;
+  }
+}
+
+=begin internal
+
+  $list->_build_distribution;
+
+This is an internal routine to update the probabilities for each node
+level.  It is meant to be called each time L</p> or L</k> are updated.
+
+=end internal
+
+=cut
 
 sub _build_distribution {
   no integer;
 
-  my ($self) = @_;
-
   my $p = $self->p;
   my $k = $self->k;
 
-  $self->{P_LEVELS} = [ (0) x MAX_LEVEL ]; 
+  $self->{p_levels} = [ (0) x MAX_LEVEL ]; 
   for my $i (0..MAX_LEVEL) {
-    $self->{P_LEVELS}->[$i] = $p**($i+$k);
+    $self->{p_levels}->[$i] = $p**($i+$k);
   }
 }
 
 sub _set_p {
   no integer;
 
-  my ($self, $p) = @_;
+  my ($p) = @args;
 
   unless ( ($p>0) && ($p<1) ) {
-    croak "Unvalid value for P (must be between 0 and 1)";
+    croak "Invalid value for P (must be between 0 and 1)";
   }
 
-  $self->{P} = $p;
+  $self->{p} = $p;
   $self->_build_distribution;
-
-}
-
-sub p {
-  no integer;
-
-  my ($self, $p) = @_;
-
-  if (defined $p) {
-    $self->_set_p($p);
-  } else {
-    $self->{P};
-  }
 }
 
 sub _set_k {
-  my ($self, $k) = @_;
+
+  my ($k) = @args;
 
   unless ( $k>=0 ) {
-    croak "Unvalid value for K (must be at least 0)";
+    croak "Invalid value for K (must be at least 0)";
   }
 
-  $self->{K} = $k;
+  $self->{k} = $k;
   $self->_build_distribution;
 }
 
-sub k {
-  my ($self, $k) = @_;
+sub _set_min_level {
+  my ($min_level) = @args;
 
-  if (defined $k) {
-    $self->_set_k($k);
-  } else {
-    $self->{K};
+  if ($self->size) {
+    croak "min_level can only be set on an empty skip list";
   }
+
+  if ( ($min_level < MIN_LEVEL) || ($min_level > MAX_LEVEL) ) {
+    croak sprintf("Invalid value for min_level (must be between %d and %d)",
+		  MIN_LEVEL, MAX_LEVEL);
+  }
+
+  $self->{min_level} = $min_level;
 }
 
-sub size {
-  my ($self) = @_;
-  $self->{SIZE};
-}
+sub _set_max_level {
+  my ($max_level) = @args;
 
-sub list {
-  my ($self) = @_;
-  $self->{LIST};
-}
+  # We want to make sure that the user-supplied does not exceed the
+  # maximum level of the list node (even though we specify that the
+  # list node has MAX_LEVEL by default).
 
+  my $max = MAX_LEVEL;
+  if ((defined $self->list) && ($self->list->child_count < $max)) {
+    $max = $self->list->child_count;
+  }
+  my $min = $self->min_level || MIN_LEVEL;
+
+  if ( ($max_level < $min) || ($max_level > $max) ) {
+    croak sprintf("Invalid value for max_level (must be between %d and %d)",
+		  $min, $max);
+  }
+  $self->{max_level} = $max_level;
+}
 
 sub _adjust_level_threshold {
   use integer;
 
-  my ($self) = @_;
-
-  if ($self->{SIZE} >= $self->{SIZE_THRESHOLD}) {
-    $self->{LAST_SIZE_TH}    = $self->{SIZE_THRESHOLD};
-    $self->{SIZE_THRESHOLD} += $self->{SIZE_THRESHOLD};
-    $self->{SIZE_LEVEL}++, if ($self->{SIZE_LEVEL} < $self->{MAXLEVEL});
-  } elsif ($self->{SIZE} < $self->{LAST_SIZE_TH}) {
-    $self->{SIZE_THRESHOLD}  = $self->{LAST_SIZE_TH};
-    $self->{LAST_SIZE_TH}    = $self->{LAST_SIZE_TH} / 2;
-    $self->{SIZE_LEVEL}--, if ($self->{SIZE_LEVEL} > MIN_LEVEL);
+  if ($self->{size} == $self->{size_threshold}) {
+    # $self->{last_size_threshold} = $self->{size_threshold};
+    $self->{size_threshold}      += $self->{size_threshold};
+    $self->{level}++,
+      if ($self->{level} < $self->{max_level});
   }
+
+#   elsif ($self->{size} < $self->{last_size_threshold}) {
+#     $self->{size_threshold}  = $self->{last_size_threshold};
+#     $self->{last_size_threshold} = $self->{last_size_threshold} / 2;
+# 
+#     # We cannot practically decrease the level without readjusting the
+#     # levels of all the nodes globally, which isn't worthwhile.
+# 
+#     # $self->{level}--,
+#     #   if ($self->{level} > MIN_LEVEL);
+#   }
 }
 
-sub _new_node_level { # previously _random_level
+sub _new_node_level {
   no integer;
 
-  my ($self) = @_;
-
-  my $n     = CORE::rand();
+  my $n     = rand();
   my $level = 1;
 
-  while (($n < $self->{P_LEVELS}->[$level]) &&
-	 ($level < $self->{SIZE_LEVEL})) {
-    $level++;
+  while (($n < $self->{p_levels}->[$level]) &&
+	 ($level++ < $self->{level})) {
   }
 
-  $level;
+  return $level;
 }
 
-sub _search_with_finger {
-  my ($self, $key, $finger) = @_;
-
-  use integer;
-
-  my $list   = $self->list;
-  my $level  = $list->level-1;
-
-  my $node   = $finger->[ $level ] || $list;
-
-  # Iteresting Perl syntax quirk:
-  #   do { my $x = ... } while ($x)
-  # doesn't work because it considers $x out of scope.
-  #
-  # However, benchmarking shows that it's faster to use
-  #   my $x; do { $x = ... } while ($x)
-  #
-
-  my $fwd;
-  my $cmp = -1;
-
-  # This version of the search algorithm is based on Schneier, 1994.
-
-  do {
-    while ( ($fwd = $node->header()->[$level]) &&
-	    ($cmp = $fwd->key_cmp($key)) < 0) {
-      $node = $fwd;
-    }
-    $finger->[$level] = $node;
-  } while ((--$level>=0)); # && ($cmp));
-
-  $node = $fwd, unless ($cmp);
-
-  # Ideally we could stop when $cmp == 0, but the update vector would
-  # not be complete for levels below $level.  insert still works, but
-  # delete and truncate have problems and need kluges to make up for
-  # that.
-
-  ($node, $finger, $cmp);
-}
-
-sub _search {
-  my ($self, $key, $finger) = @_;
-
-  use integer;
-
-  my $list   = $self->list;
-  my $level  = $list->level-1;
-
-#  $finger ||= [ ];
-
-  my $node   = $finger->[ $level ]  || $list;
-
-  # This version of the search algorithm is based on Schneier, 1994.
-
-  my $fwd;
-  my $cmp = -1;
-
-  do {
-    while ( ($fwd = $node->header()->[$level]) &&
-	    ($cmp = $fwd->key_cmp($key)) < 0) {
-      $node = $fwd;
-    }
-  } while ((--$level>=0) && ($cmp));
-
-  $node = $fwd; # , unless ($cmp); # Devel::Cover says it's never false
-
-  ($node, $finger, $cmp);
-}
-
-sub insert {
-  my ($self, $key, $value, $finger) = @_;
-
-  use integer;
-
-  my $list   = $self->list;
-
-  # We save the node and finger of the last insertion. If the next key
-  # is larger, then we can use the "finger" to speed up insertions.
-
-  my ($node, $cmp);
-
-  unless ($finger) {
-    $node   = $self->{LASTINSRT}->[0] and do {
-      $finger = $self->{LASTINSRT}->[1],
-	if ($node->key_cmp($key) <= 0);
-      };
+sub _set_node_class {
+  my ($node_class) = @args;
+  unless ($node_class->isa( DEFAULT_NODE_CLASS )) {
+    croak "$node_class is not a " . DEFAULT_NODE_CLASS;
   }
+  $self->{node_class} = $node_class;
+}
 
-  ($node, $finger, $cmp) = $self->_search_with_finger($key, $finger);
+=item size
 
-  if ($cmp || $self->{DUPLICATES}) {
+  $size = $list->size;
 
-    my $new_level = $self->_new_node_level;
+Returns the number of nodes in the list.
 
-    my $node_hdr = [ ];
-    my $fing_hdr;
+=cut
 
-    $node = $self->_node_class->new( $key, $value, $node_hdr );
+sub size {
+  return $self->{size};
+}
 
-    for (my $i=0;$i<$new_level;$i++) {
-      $fing_hdr = ($finger->[$i]||$list)->header();
-      $node_hdr->[$i] = $fing_hdr->[$i];
-      $fing_hdr->[$i] = $node;
-    }
+=item reset
 
+  $list->reset;
 
-    # We no longer set the LIST_END value, since it is the job of the
-    # _greatest_node method to find it, as needed.
+Resets the iterator used by L</first_key> and L</next_key>.
 
-    $self->{SIZE}++;
-    $self->_adjust_level_threshold;
+=begin internal
+
+=item _reset_iterator
+
+This is the internal alias for L</reset>.
+
+=end internal
+
+=cut
+
+sub _reset_iterator {
+  $self->{iterator} = undef;
+}
+
+sub _set_iterator_by_key {
+  ## my ($key, $finger) = @args;
+  my ($node, $cmp) = $self->_search(@args);
+  if ($cmp) {
+    carp "key \'$args[0]\' not found" if (warnings::enabled);
+    return $self->_reset_iterator;
   } else {
-    $node->value($value);
-  }
-  $self->{LASTINSRT}->[0] = $node;
-  $self->{LASTINSRT}->[1] = $finger;
-}
-
-sub delete {
-
-  my ($self, $key, $finger) = @_;
-
-  use integer;
-
-  my $list = $self->list;
-
-  my ($node, $update_ref, $cmp) = $self->_search_with_finger($key, $finger);
-
-  if ($cmp == 0) {
-    my $value = $node->value;
-
-    # Note: it might make better sense to set $self->{LIST_END} = undef, and
-    # let the _greatest_node method search for it if it's needed again.
-
-    if (($self->{LIST_END}) && ($node == $self->{LIST_END})) {
-      $self->{LIST_END}  = $update_ref->[0];
-    }
-
-    my $level = $node->level; 
-
-    for (my $i=0; $i<$level; $i++) {
-      $update_ref->[$i]->header()->[$i] = $node->header()->[$i];
-    }
-
-    # There's probably a smarter way to handle the last insert and
-    # last key values, but this is the fastest, easiest, safest and
-    # most consistent way.
-
-    $self->{LASTINSRT} = undef;
-    $self->reset;
-
-    $self->{SIZE} --;
-    $self->_adjust_level_threshold;
-
-    # We shouldn't need to "undef $node" here. The Garbage Collector
-    # should hanldle that (especially if there's a finger that points
-    # to it somewhere).
-
-    # Note: It doesn't seem to be a wise idea to return a search
-    # finger for deletions without further analysis
-
-    $value;
-
-  } else {
-    carp "key not found", if (warnings::enabled);
-    return;
+    return $self->{iterator} = $node;
   }
 }
 
-sub exists {
-
-  my ($self, $key, $finger) = @_;
-
-  (($self->_search($key, $finger))[2] == 0);
+sub _first_node {
+  $self->_reset_iterator;
+  $self->_next_node;
 }
 
-sub find_with_finger {
-  my ($self, $key, $finger) = @_;
-
-  my ($x, $update_ref, $cmp) = $self->_search_with_finger($key, $finger);
-
-  ($cmp == 0) ? (
-    (wantarray) ? ($x->value, $update_ref) : $x->value
-  ) : undef;
-
+sub _next_node {
+  $self->{iterator} = ($self->{iterator} || $self->list)->get_child(0);
 }
 
-sub find {
-  my ($self, $key, $finger) = @_;
-
-  my ($node, $update_ref, $cmp) = $self->_search($key, $finger);
-
-  ($cmp == 0) ? $node->value : undef;
+sub _last_node {
+  return $self->{last_node};
 }
 
+=item first_key
 
-sub _first_node { # actually this is the second node
-  my $self = shift;
+  $key = $list->first_key;
 
-  my $list = $self->list;
-  my $node = $list->header()->[0];
-}
+Returns the first key in the list. Implicitly calls the iterator L</reset>
+method.
 
-
-sub last_key {
-  my ($self, $node, $index) = @_;
-
-  if (@_ > 1) {
-    $self->{LASTKEY} = [ $node, $index ];
-    my $check = $index || 0;
-    if (($check < 0) || ($check >= $self->size)) {
-      carp "index out of bounds", if (warnings::enabled);
-    }
-  }
-  else {
-    unless ($self->{LASTKEY}) {
-      $self->{LASTKEY} = [ $self->_first_node, 0 ];
-    }
-    ($node, $index) = @{ $self->{LASTKEY} };
-  }
-
-  if ($node) {
-    return (wantarray) ?
-      ( $node->key, [ $node ], $node->value, $index ) : $node->key;
-  } else {
-    return;
-  }
-}
+=cut
 
 sub first_key {
-  my $self = shift;
-
   my $node = $self->_first_node;
-
-  if ($node) {
-    return $self->last_key( $node, 0);
-  }
-  else {
-    carp "no _first_node", if (warnings::enabled);
-    return;
-  }
+  return $node->key;
 }
+
+=item next_key
+
+  $key = $list->next_key;
+
+Returns the next key in the series.
+
+  $key = $list->next_key($last_key);
+
+Returns the key that follows the C<$last_key>.
+
+  $key = $list->next_key($last_key, $finger);
+
+Same as above, using the C<$finger> to search for the key.
+
+=cut
 
 sub next_key {
-  my ($self, $last_key, $finger) = @_;
-
-  my ($node, $cmp, $value, $index);
-
+  my ($last_key, $finger) = @args;
   if (defined $last_key) {
-    ($node, $finger, $cmp) = $self->_search_with_finger($last_key, $finger);
-
-    if ($cmp) {
-      carp "cannot find last_key", if (warnings::enabled);
-      return;
-    }
-  }
-  else {
-    ($node, $index) = @{ $self->{LASTKEY} || [ ] };
-    unless ($node) {
-      return $self->first_key;
-    }
+    $self->_set_iterator_by_key($last_key, $finger);
   }
 
-  if ($node) {
-    $node = $node->header()->[0];
-    return $self->last_key(
-      $node,
-      (($node && (defined $index)) ? ($index+1) : undef )
-    );
-  }
-  else {
-    return $self->reset;
-  }
+  my $node = $self->_next_node;
+  return $node->key if ($node);
+  return;
 }
 
 
-BEGIN
-  {
-    # make aliases to methods...
-    no strict;
-    *TIEHASH = \&new;
-    *STORE   = \&insert;
-    *FETCH   = \&find;
-    *EXISTS  = \&exists;
-    *CLEAR   = \&clear;
-    *DELETE  = \&delete;
-    *FIRSTKEY = \&first_key;
-    *NEXTKEY = \&next_key;
+sub _error {
+  croak "Method unimplemented";
+} 
 
-    *search  = \&find;
+BEGIN {
+  *TIEHASH   = \&new;
+  *STORE     = \&insert;
+  *FETCH     = \&find;
+  *EXISTS    = \&exists;
+  *CLEAR     = \&clear;
+  *DELETE    = \&delete;
+  *FIRSTKEY  = \&first_key;
+  *NEXTKEY   = \&next_key;
+
+  *reset     = \&_reset_iterator;
+  *search    = \&find;
+
+    *merge   = \&_error;
+    *find_duplicates = \&_error;
+    *_node_by_index = \&_error;
+    *key_by_index = \&_error;
+    *index_by_key = \&_error;
+    *value_by_index = \&_error;
+
+  *_prev     = \&_error;
+  *_prev_key = \&_error;
+
+  _set_config_options();
+  foreach my $field (CORE::keys %CONFIG_OPTIONS) {
+    my $set_method = "_set_" . $field;
+    no strict 'refs';
+    *$field = sub {
+      my $self = shift;
+      if (@_) {
+	$self->$set_method($field);
+      } else {
+	return $self->{$field};
+      }
+    };
+    unless (__PACKAGE__->can($set_method)) {
+      *$set_method = sub {
+	my $self = shift;
+        $self->{$field} = shift;
+      };
+    }
   }
+}
+
+1;
+
+# __END__
+
+=item least
+
+  ($key, $value) = $list->least;
+
+Returns the least key and value in the list, or C<undef> if the list
+is empty.
+
+=cut
+
+sub least {
+  my $node = $self->_first_node || return;
+  return ($node->key, $node->value);
+}
+
+=item greatest
+
+  ($key, $value) = $list->greatest;
+
+Returns the greatest key and value in the list, or C<undef> if the list
+is empty.
+
+=cut
+
+sub greatest {
+  my $node = $self->_last_node || return;
+  return ($node->key, $node->value);
+
+}
+
+=item next
+
+  ($key, $value) = $list->next( $last_key, $finger );
+
+Returns the next key-value pair.
+
+C<$last_key> and C<$finger> are optional.
+
+=cut
+
+sub next {
+  my ($last_key, $finger) = @args;
+  if (defined $last_key) {
+    $self->_set_iterator_by_key($last_key, $finger);
+  }
+  my $node = $self->_next_node;
+  return ($node->key, $node->value);
+}
+
+=item keys
+
+  @keys = $list->keys;
+
+Returns a list of keys, in the order that they occur.
+
+  @keys = $list->keys( $low, $high);
+
+Returns a list of keys between C<$low> and C<$high>, inclusive. (This
+is only available in versions 1.02 and later.)
+
+=cut
+
+sub keys {
+  my ($low, $high, $finger) = @args;
+  my @result = ( );
+  if (defined $low) {
+    push @result, $self->_set_iterator_by_key($low, $finger)->key;
+  }
+  else {
+    $self->_reset_iterator;
+  }
+
+  my $node;
+  while ( ($node = $self->_next_node) &&
+	  ((!defined $high) || ($node->key_cmp($high) < 1) )) {
+    push @result, $node->key;
+  }
+  return @result;
+}
+
+=item values
+
+  @values = $list->values;
+
+Returns a list of values corresponding to the keys returned by the
+L</keys> method.  You can also request the values between a pair of
+keys:
+
+  @values = $list->values( $low, $high );
+
+=cut 
+
+sub values {
+  my ($low, $high, $finger) = @args;
+  my @result = ( );
+  if (defined $low) {
+    push @result, $self->_set_iterator_by_key($low, $finger)->value;
+  }
+  else {
+    $self->_reset_iterator;
+  }
+
+  my $node;
+  while ( ($node = $self->_next_node) &&
+	  ((!defined $high) || ($node->key_cmp($high) < 1) )) {
+    push @result, $node->value;
+  }
+  return @result;
+}
+
+
+=item copy
+
+  $list2 = $list1->copy;
+
+Makes a copy of a list.  The configuration options passed to L</new> are
+used, although the exact structure of node levels is not cloned.
+
+  $list2 = $list1->copy( $key_from, $key_to, $finger );
+
+Copy the list between C<$key_from> and C<$key_to> (inclusive).  If
+C<$finger> is defined, it will be used as a search finger to find
+C<$key_from>.  If C<$key_to> is not specified, then it will be assumed
+to be the end of the list.
+
+If C<$key_from> does not exist, C<undef> will be returned.
+
+Note: the order of arguments has been changed since version 2.00!
+
+=cut
+
+sub copy {
+  my ($low, $high, $finger) = @args;
+  my %opts = map { $_ => $self->$_ } (CORE::keys %CONFIG_OPTIONS);
+  my $copy = Algorithm::SkipList->new( %opts );
+
+  if (defined $low) {
+    my $node = $self->_set_iterator_by_key($low, $finger);
+    $copy->insert($node->key, $node->value), if ($node);
+  }
+  else {
+    $self->_reset_iterator;
+  }
+
+  my $node;
+  while ( ($node = $self->_next_node) &&
+	  ((!defined $high) || ($node->key_cmp($high) < 1) )) {
+    $copy->insert($node->key, $node->value);
+  }
+
+  return $copy;
+}
+
+sub truncate {
+  my ($key, $finger) = @args;
+
+  my ($node, $cmp);
+  ($node, $cmp, $finger) = $self->_search_with_finger($key, $finger);
+
+  if ($cmp) {
+    return;
+  }
+  else {
+    my %opts = map { $_ => $self->$_ } (CORE::keys %CONFIG_OPTIONS);
+    my $tail = Algorithm::SkipList->new( %opts );
+    my $list = $tail->list;
+
+    for(my $i=0; $i<@$finger; $i++) {
+      $list->set_child($i, $finger->[$i]->get_child($i));
+      $finger->[$i]->set_child($i, undef);
+    }
+    $self->{last_node} = $finger->[0];
+    return $tail;
+  }
+}
+
+sub append {
+  my ($head, $tail) = @_;  
+
+  my $left  = $head->_last_node;
+  my $right = $tail->_first_node;
+
+  # Note: the behavior is not different when one of the skip lists is
+  # empty. In particular, the tail is not cleared, although the user
+  # should assume that it is.
+
+  unless ($head->size) { return $tail; }
+  unless ($tail->size) { return $head; }
+
+  if ( (($left->key_cmp($right->key)<0) && ($right->key_cmp($left->key)>0)) ||
+       ($head->allow_duplicates && ($left->key_cmp($right->key)==0)) ) {
+
+    # We need to build an update vector for the last node on each
+    # level. There's really no other way to do this but to use a
+    # specialized search.
+
+    my $finger = [ ($head->list) x $head->level ];
+    {
+      my $i = $head->level-1;
+      my $node = $head->list->get_child($i);
+      if ($node) {
+	do {
+	  while (my $fwd = $node->get_child($i)) {
+	    $node = $fwd;
+	  }
+	  $finger->[$i] = $node;
+	} while (--$i >= 0);
+      }
+    }
+
+    for(my $i=0; $i<$head->level; $i++) {
+      $finger->[$i]->set_child($i, $tail->list->get_child($i));
+    }
+
+    # If the tail has a greater height than the head, we increase it
+
+    if ($tail->level > $head->level) {
+      for (my $i=$head->level; $i<$tail->level; $i++) {
+	$head->list->set_child($i, $tail->list->get_child($i));
+      }
+      $head->{level} = $tail->level;
+    }
+    $head->{size} += $tail->size;
+    $tail->clear;
+
+    return $head;
+  }
+  else {
+    croak "Cannot append: first key of tail is less than last key of head";
+  }
+}
+
+=begin internal
+
+=item _debug
+
+  $list->_debug;
+
+This is an internal routine for dumping the contents and structure of
+a skiplist to STDERR.  It is intended for debugging.
+
+=end internal
+
+=cut
+
+sub _debug {
+  my ($fh) = @args;
+
+  $fh = \*STDERR, unless ($fh);
+
+  my $node   = $self->list;
+
+  while ($node) {
+    if ($node->isa("Algorithm::SkipList::Header")) {
+      print $fh "undef=undef (header) ", $node, "\n";
+    }
+    else {
+      print $fh
+	$node->key||'undef', "=", $node->value||'undef'," ", $node,"\n";
+    }
+
+    for(my $i=0; $i<$node->child_count; $i++) {
+      print $fh " ", $i," ", $node->get_child($i)
+	|| 'undef', "\n";
+    }
+    print $fh "\n";
+
+    $node = $node->get_child(0);
+  }
+}
 
 1;
 
 __END__
+
+=back
+
+=cut
+
+
+
+
+__END__
+
+#### Old version here - delete!
 
 sub find_duplicates {
   my ($self, $key, $finger) = @_;
@@ -563,50 +1136,22 @@ sub find_duplicates {
   }
 }
 
-sub level {
-  my $self = shift;
-  return $self->list->level;
-}
 
 sub _greatest_node {
   my ($self) = @_;
 
   my $list = $self->{LIST_END} || $self->list;
 
-  my $level = $list->level-1;
+  my $level = $self->level-1;
   do {
-    while ($list->header()->[$level]) {
-      $list = $list->header()->[$level];
+    while (my $next = $list->get_child($level)) {
+      $list = $next;
     }
   } while (--$level >=0);
 
   $self->{LIST_END} = $list;
 }
 
-sub least {
-  my $self = shift;
-
-  my ($node) = $self->_first_node;
-
-  if ($node) {
-    return ($node->key, $node->value);
-  } else {
-    carp "no _first_node", if (warnings::enabled);
-    return;
-  }
-}
-
-sub greatest {
-  my $self = shift;
-
-  my $node = $self->_greatest_node;
-  if ($node) {
-    return ($node->key, $node->value);
-  } else {
-    carp "no _greatest_node", if (warnings::enabled);
-    return;
-  }
-}
 
 sub next {
   my $self = shift;
@@ -622,12 +1167,14 @@ sub next {
 
 sub prev_key {
   my $self = shift;
-  croak "unimplemented method";
+  $self->_error;
+  ## croak "unimplemented method";
 }
 
 sub prev {
-  my ($self) = @_;
-  croak "unimplemented method";
+  my $self = shift;
+  $self->_error;
+  ## croak "unimplemented method";
 }
 
 sub _search_nodes {
@@ -637,7 +1184,7 @@ sub _search_nodes {
   $low  = $self->_first_node()->key(),  unless (defined $low);
   $high = $self->_greatest_node->key(), unless (defined $high);
 
-  if ($self->_node_class->new($low)->key_cmp($high) > 0) {
+  if ($self->_node_class->new($low,undef,[])->key_cmp($high) > 0) {
     carp "low > high";
     return;
   }
@@ -699,7 +1246,7 @@ sub truncate {
         node_class => $self->_node_class,
       );
 
-      my $level   = $self->list->level;
+      my $level   = $self->level;
       my $old_hdr = $self->list->header;
       my $new_hdr = $list->list->header;
 
@@ -756,32 +1303,7 @@ sub truncate {
 
 }
 
-
-sub copy {
-  my $self = shift;
-
-  my ($key, $finger_or, $key_to) = @_;
-
-  my $list = __PACKAGE__->new(
-    max_level  => $self->max_level,
-    p          => $self->p,
-    node_class => $self->_node_class,
-  );
-  $list->{DUPLICATES} = $self->{DUPLICATES};
-
-  my @nodes = $self->_search_nodes($key, $finger_or, $key_to);
-  return, unless (@nodes);
-
-  my $finger_cp;
-  foreach my $node (@nodes) {
-    $finger_cp = $list->insert($node->key, $node->value, $finger_cp);
-  }
-
-  return $list;
-}
-
 sub merge {
-
   my $list1 = shift;
 
   my $list2 = shift;
@@ -832,29 +1354,29 @@ sub append {
 
     my ($next) = $list2->_first_node;
 
-    if ($list1->list->level > $list2->list->level) {
+    if ($list1->level > $list2->level) {
 
-      if ($list1->list->level < $list1->max_level) {
+      if ($list1->level < $list1->max_level) {
 
-	my $i = $list1->list->level;
-	while (!defined $list1->list->header()->[$i]) { $i--; }
-	$list1->list->header()->[$i+1] = $next;
+	my $i = $list1->level;
+	while (!defined $list1->list->get_child($i)) { $i--; }
+	$list1->list->set_child($i+1, $next);
       } else {
-	my $i = $list1->list->level-1;
-	my $x = $list1->list->header()->[$i];
-	while (defined $x->header()->[$i]) {
-	  $x = $x->header()->[$i];
+	my $i = $list1->level-1;
+	my $x = $list1->list->get_child($i);
+	while (my $n = $x->get_child($i)) {
+	  $x = $n;
 	}
-	$x->header()->[$i] = $next;
+	$x->set_child($i, $next);
       }
-      $node->header()->[0] = $next;
+      $node->set_child(0, $next);
 
     } else {
       for (my $i=0; $i<$node->level; $i++) {
 	$node->header()->[$i] = $next;
       }
-      for (my $i=$list1->list->level; $i<$list2->list->level; $i++) {
-	$list1->list->header()->[$i] = $next;
+      for (my $i=$list1->level; $i<$list2->level; $i++) {
+	$list1->list->set_child($i, $next);
       }
     }
 
@@ -973,57 +1495,6 @@ sub _debug {
   }
 
 }
-
-=head1 NAME
-
-Algorithm::SkipList - Perl implementation of skip lists
-
-=head1 REQUIREMENTS
-
-The following non-standard modules are used:
-
-  enum
-
-=head1 SYNOPSIS
-
-  my $list = new Algorithm::SkipList();
-
-  $list->insert( 'key1', 'value' );
-  $list->insert( 'key2', 'another value' );
-
-  $value = $list->find('key2');
-
-  $list->delete('key1');
-
-=head1 DESCRIPTION
-
-This is an implementation of I<skip lists> in Perl.
-
-Skip lists are similar to linked lists, except that they have random
-links at various I<levels> that allow searches to skip over sections
-of the list, like so:
-
-  4 +---------------------------> +----------------------> +
-    |                             |                        |
-  3 +------------> +------------> +-------> +-------> +--> +
-    |              |              |         |         |    |
-  2 +-------> +--> +-------> +--> +--> +--> +-------> +--> +
-    |         |    |         |    |    |    |         |    |
-  1 +--> +--> +--> +--> +--> +--> +--> +--> +--> +--> +--> +
-         A    B    C    D    E    F    G    H    I    J   NIL
-
-A search would start at the top level: if the link to the right
-exceeds the target key, then it descends a level.
-
-Skip lists generally perform as well as balanced trees for searching
-but do not have the overhead with respect to inserting new items.  See
-the included file C<Benchmark.txt> for a comparison of performance
-with other Perl modules.
-
-For more information on skip lists, see the L</"SEE ALSO"> section below.
-
-Only alphanumeric keys are supported "out of the box".  To use numeric
-or other types of keys, see L</"Customizing the Node Class"> below.
 
 =head2 Methods
 
@@ -1488,7 +1959,7 @@ Note: in earlier versions it was called C<_random_level>.
   $node = $list->list;
 
 Returns the initial node in the list, which is a
-C<Algorithm::SkipList::Node> (See L<below|/"Node Methods">.)
+L<Tree::Node>.
 
 The key and value for this node are undefined.
 
@@ -1512,7 +1983,7 @@ L</greatest> methods.
   $node_class_name = $list->_node_class;
 
 Returns the name of the node class used.  By default this is the
-C<Algorithm::SkipList::Node>, which is discussed below.
+L<Tree::Node>.
 
 =item _build_distribution
 
@@ -1540,12 +2011,6 @@ function is subject to change.
 
 =back
 
-=head2 Node Methods
-
-Methods for the L<Algorithm::SkipList::Node> object are documented in
-that module.  They are for internal use by the main
-C<Algorithm::SkipList> module.
-
 =head1 SPECIAL FEATURES
 
 =head2 Tied Hashes
@@ -1559,47 +2024,6 @@ Hashes can be tied to C<Algorithm::SkipList> objects:
   print $list->find('foo'); # returns bar
 
 See the L<perltie> manpage for more information.
-
-=head2 Customizing the Node Class
-
-The default node may not handle specialized data types.  To define
-your own custom class, you need to derive a child class from
-C<Algorithm::SkipList::Node>.
-
-Below is an example of a node which redefines the default type to use
-numeric instead of string comparisons:
-
-  package NumericNode;
-
-  our @ISA = qw( Algorithm::SkipList::Node );
-
-  sub key_cmp {
-    my $self = shift;
-
-    my $left  = $self->key;  # node key
-    my $right = shift;       # value to compare the node key with
-
-    unless ($self->validate_key($right)) {
-      die "Invalid key: \'$right\'"; }
-
-    return ($left <=> $right);
-  }
-
-  sub validate_key {
-    my $self = shift;
-    my $key  = shift;
-    return ($key =~ s/\-?\d+(\.\d+)?$/); # test if key is numeric
-  }
-
-To use this, we say simply
-
-  $number_list = new Algorithm::SkipList( node_class => 'NumericNode' );
-
-This skip list should work normally, except that the keys must be
-numbers.
-
-For another example of customized nodes, see L<Tie::RangeHash> version
-1.00_b1 or later.
 
 =head2 About Search Fingers
 
@@ -1657,17 +2081,23 @@ are not commonly used.
 One thing that differentiates this module from other modules is the
 flexibility in defining a custom node class.
 
-See the included F<Benchmark.txt> file for performance comparisons.
+=for readme continue
 
 =head1 KNOWN ISSUES
 
 =over
 
-=item Upgrading from List::SkipList
+=item Developer Release
 
-If you are upgrading a prior version of L<List::SkipList>, then you
-may want to uninstall the module before installing
-L<Algorithm::SkipList>, so as to remove unused autoloading files.
+This is a developer release, with many changes to improve performance.
+Some of these changes may cause incompatabilities.  See the F<Changes>
+file.
+
+L<Algorithm::SkipList::PurePerl> is not included with this release, and
+code which relies on it may fail.
+
+The documentation has largely been copied from the 1.02 release, and
+may not accurately reflect changes in this release.
 
 =item Undefined Values
 
@@ -1713,7 +2143,7 @@ Robert Rothenberg <rrwo at cpan.org>
 
 =head2 Acknowledgements
 
-Carl Shapiro <cshapiro at panix.com> for introduction to skip lists.
+Carl Shapiro for introduction to skip lists.
 
 =head2 Suggestions and Bug Reporting
 
@@ -1722,9 +2152,9 @@ L<http://rt.cpan.org> to submit bug reports.
 
 =head1 LICENSE
 
-Copyright (c) 2003-2005 Robert Rothenberg. All rights reserved.  This
-program is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+Copyright (c) 2003-2005, 2008-2010 Robert Rothenberg. All rights
+reserved.  This program is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
 
 =head1 SEE ALSO
 
